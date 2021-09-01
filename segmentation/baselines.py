@@ -9,6 +9,7 @@ from bioimageio.spec import load_resource_description
 
 from elf.segmentation.utils import normalize_input
 from elf.segmentation.mutex_watershed import mutex_watershed as mws
+from elf.segmentation.watershed import apply_size_filter
 
 from skimage.measure import label
 from skimage.segmentation import watershed
@@ -16,6 +17,7 @@ from skimage.segmentation import watershed
 from .common import write_image
 
 
+# TODO add multicut baseline
 #
 # Utility Functions
 #
@@ -23,7 +25,7 @@ from .common import write_image
 
 def compute_all_baselines(in_path, out_path, affinity_model=None, boundary_model=None,
                           offsets=None, with_foreground=True, padding=None):
-    assert sum(affinity_model is not None, boundary_model is not None) >= 1
+    assert sum([affinity_model is not None, boundary_model is not None]) >= 1
 
     # affinty based baselines
     if affinity_model is not None:
@@ -110,7 +112,7 @@ def connected_components_with_boundaries(path, threshold=0.5, in_key_prefix="pre
         write_image(f, out_key, seg)
 
 
-def mutex_watershed(path, offsets, threshold=None, strides=[3, 3],
+def mutex_watershed(path, offsets, threshold=None, strides=[3, 3], min_size=25,
                     in_key_prefix="predictions", out_key_prefix="segmentations"):
     with h5py.File(path, "a") as f:
         g = f[in_key_prefix]
@@ -122,7 +124,9 @@ def mutex_watershed(path, offsets, threshold=None, strides=[3, 3],
             assert "foreground" in g
             mask = g["foreground"][:] > threshold
         seg = mws(affinities, offsets, strides,
-                  randomize_strides=True, mask=mask)
+                  randomize_strides=True, mask=mask).astype("uint32")
+        if min_size > 0:
+            seg = apply_size_filter(seg, affinities[0], min_size)[0]
 
         out_key = f"{out_key_prefix}/mutex_watershed"
         write_image(f, out_key, seg)
