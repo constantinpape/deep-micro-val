@@ -112,6 +112,7 @@ def connected_components_with_boundaries(path, threshold=0.5, in_key_prefix="pre
         write_image(f, out_key, seg)
 
 
+# FIXME somehow the mask is not used correctly
 def mutex_watershed(path, offsets, threshold=None, strides=[3, 3], min_size=25,
                     in_key_prefix="predictions", out_key_prefix="segmentations"):
     with h5py.File(path, "a") as f:
@@ -122,7 +123,8 @@ def mutex_watershed(path, offsets, threshold=None, strides=[3, 3], min_size=25,
             mask = None
         else:
             assert "foreground" in g
-            mask = g["foreground"][:] > threshold
+            fg = g["foreground"][:]
+            mask = fg > threshold
         seg = mws(affinities, offsets, strides,
                   randomize_strides=True, mask=mask).astype("uint32")
         if min_size > 0:
