@@ -1,8 +1,7 @@
 import argparse
 import os
 from glob import glob
-from pathlib import Path
-from segmentation import segment_all
+from segmentation import segment_all, require_nucleus_models, get_offsets
 
 
 def prepare_dsb(folder):
@@ -13,47 +12,6 @@ def prepare_dsb(folder):
             os.path.exists(os.path.join(folder, "test", "images"))
         return
     _download_dsb(folder, source="reduced", download=True)
-
-
-# TODO try the full stardist dsb model (issues with channels)
-# TODO model download
-def require_models(folder):
-    # model download from zenodo in python, similar to:
-    # https://github.com/ilastik/bioimage-io-models/blob/main/src/ilastik-app.imjoy.html#L116
-    # (maybe this already exists?!)
-    model_folder = os.path.join(folder, "models")
-    os.makedirs(model_folder, exist_ok=True)
-
-    # FIXME load_resource_description fails for abs path,
-    # see https://github.com/bioimage-io/spec-bioimage-io/issues/228
-    # hence, we need to cast to rel paths or pathlib.Path
-
-    # affinity_url = "todo"
-    affinity_model = os.path.join(model_folder, "DSB-Nuclei-AffinityModel.zip")
-    # affinity_model = os.path.relpath(affinity_model)
-    affinity_model = Path(affinity_model)
-    assert os.path.exists(affinity_model), affinity_model
-
-    # boundary_url = "todo"
-    boundary_model = os.path.join(model_folder, "DSB-Nuclei-BoundaryModel.zip")
-    # boundary_model = os.path.relpath(boundary_model)
-    boundary_model = Path(affinity_model)
-    assert os.path.exists(boundary_model), boundary_model
-
-    # stardist_url = "todo"
-    stardist_model = os.path.join(model_folder, "2D_dsb2018")
-    assert os.path.exists(stardist_model), stardist_model
-
-    return affinity_model, boundary_model, stardist_model
-
-
-def get_offsets(model_path):
-    try:
-        from bioimageio.spec import load_resource_description
-    except ImportError:
-        return None
-    model = load_resource_description(model_path)
-    return model.config["mws"]["offsets"]
 
 
 def main(args):
@@ -67,7 +25,8 @@ def main(args):
 
     if args.segment:
 
-        affinity_model, boundary_model, stardist_model = require_models(args.folder)
+        model_folder = os.path.join(args.folder, "models")
+        affinity_model, boundary_model, stardist_model = require_nucleus_models(model_folder)
         offsets = get_offsets(affinity_model)
 
         padding = {"x": 16, "y": 16}

@@ -3,7 +3,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from bioimageio.core.predict import load_image, predict, pad_predict_crop
+from bioimageio.core.prediction import load_image, predict, pad_predict_crop
 from bioimageio.core.prediction_pipeline import create_prediction_pipeline
 from bioimageio.spec import load_resource_description
 
