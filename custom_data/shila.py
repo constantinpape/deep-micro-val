@@ -7,6 +7,7 @@ import imageio
 import h5py
 
 
+# FIXME something is wrong with dimensions here !!!!!!!!!!!!
 def prepare_dataset(input_folder, output_folder):
     image_folder = os.path.join(output_folder, "images")
     pred_folder = os.path.join(output_folder, "predictions")
@@ -44,15 +45,15 @@ def main(folder, input_folder):
     output_folder = os.path.join(folder, "predictions")
 
     if args.segment:
-        from segmentation import segment_all, require_nucleus_models, get_offsets
+        from segmentation import segment_all, require_nucleus_models
         model_folder = os.path.join(args.folder, "models")
-        affinity_model, boundary_model, stardist_model = require_nucleus_models(model_folder)
-        offsets = get_offsets(affinity_model)
+        _, boundary_model, stardist_model = require_nucleus_models(model_folder)
 
-        padding = {"x": 16, "y": 16}
+        tiling = {"halo": {"x": 16, "y": 16}, "tile": {"x": 512, "y": 512}}
         segment_all(input_files, output_folder,
-                    affinity_model, boundary_model, stardist_model,
-                    offsets=offsets, padding=padding)
+                    boundary_model=boundary_model,
+                    stardist_model=stardist_model,
+                    tiling=tiling)
 
     output_files = glob(os.path.join(output_folder, "*.h5"))
     output_files.sort()

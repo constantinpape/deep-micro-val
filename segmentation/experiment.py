@@ -19,11 +19,11 @@ except ImportError:
 def _segment_image(in_path, out_path,
                    affinity_model, boundary_model,
                    cellpose_model, stardist_model,
-                   offsets, with_foreground, padding):
+                   offsets, with_foreground, padding, tiling):
     if affinity_model or boundary_model:
         baselines.compute_all_baselines(in_path, out_path, affinity_model, boundary_model,
                                         offsets=offsets, with_foreground=with_foreground,
-                                        padding=padding)
+                                        padding=padding, tiling=tiling)
     if cellpose_model:
         cellpose.compute_cellpose(cellpose_model, in_path, out_path)
     if stardist_model:
@@ -33,7 +33,7 @@ def _segment_image(in_path, out_path,
 # TODO cellpose model type as parameter
 def segment_all(files, output_folder,
                 affinity_model=None, boundary_model=None, stardist_model=None,
-                offsets=None, with_foreground=True, padding=None):
+                offsets=None, with_foreground=True, padding=None, tiling=None):
     os.makedirs(output_folder, exist_ok=True)
 
     affinity_model = None if (affinity_model is None or baselines is None) else baselines.load_model(affinity_model)
@@ -47,7 +47,8 @@ def segment_all(files, output_folder,
         _segment_image(path, out_path,
                        affinity_model, boundary_model,
                        cellpose_model, stardist_model,
-                       offsets, with_foreground, padding)
+                       offsets, with_foreground,
+                       padding, tiling)
 
 
 def require_nucleus_models(model_folder):

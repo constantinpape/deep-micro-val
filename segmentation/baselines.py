@@ -3,7 +3,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from bioimageio.core.prediction import load_image, predict, pad_predict_crop
+from bioimageio.core.prediction import load_image, predict, predict_with_padding, predict_with_tiling
 from bioimageio.core.prediction_pipeline import create_prediction_pipeline
 from bioimageio.spec import load_resource_description
 
@@ -24,21 +24,24 @@ from .common import write_image
 
 
 def compute_all_baselines(in_path, out_path, affinity_model=None, boundary_model=None,
-                          offsets=None, with_foreground=True, padding=None):
+                          offsets=None, with_foreground=True, padding=None, tiling=None):
+    assert sum([padding is not None, tiling is not None]) <= 1
     assert sum([affinity_model is not None, boundary_model is not None]) >= 1
 
     # affinty based baselines
     if affinity_model is not None:
         assert offsets is not None
         predict_affinities(affinity_model, in_path, out_path,
-                           with_foreground=with_foreground, padding=padding)
+                           with_foreground=with_foreground,
+                           padding=padding, tiling=tiling)
         threshold = 0.5 if with_foreground else None
         mutex_watershed(out_path, offsets, threshold)
 
     # boundary based baselines
     if boundary_model is not None:
         predict_boundaries(boundary_model, in_path, out_path,
-                           with_foreground=with_foreground, padding=padding)
+                           with_foreground=with_foreground,
+                           padding=padding, tiling=tiling)
         connected_components(out_path)
         connected_components_with_boundaries(out_path)
 
@@ -53,19 +56,22 @@ def load_model(path, devices=None):
 #
 
 
-def _pred_impl(model, in_path, padding):
+def _pred_impl(model, in_path, padding, tiling):
     axes = tuple(model.input_axes)
     image = load_image(in_path, axes)
-    if padding is None:
-        pred = predict(model, image)
+    if padding is not None:
+        pred = predict_with_padding(model, image, padding)
+    elif tiling is not None:
+        pred = predict_with_tiling(model, image, tiling)
     else:
-        pred = pad_predict_crop(model, image, padding)
+        pred = predict(model, image)
     return pred
 
 
 def predict_affinities(model, in_path, out_path,
-                       with_foreground=True, padding=None, out_key_prefix="predictions"):
-    pred = _pred_impl(model, in_path, padding)
+                       with_foreground=True, padding=None, tiling=None,
+                       out_key_prefix="predictions"):
+    pred = _pred_impl(model, in_path, padding, tiling)
     if with_foreground:
         out_key = f"{out_key_prefix}/foreground"
         write_image(out_path, out_key, pred[0])
@@ -75,8 +81,9 @@ def predict_affinities(model, in_path, out_path,
 
 
 def predict_boundaries(model, in_path, out_path,
-                       with_foreground=True, padding=None, out_key_prefix="predictions"):
-    pred = _pred_impl(model, in_path, padding)
+                       with_foreground=True, padding=None, tiling=None,
+                       out_key_prefix="predictions"):
+    pred = _pred_impl(model, in_path, padding, tiling)
     if with_foreground:
         out_key = f"{out_key_prefix}/foreground"
         write_image(out_path, out_key, pred[0])
