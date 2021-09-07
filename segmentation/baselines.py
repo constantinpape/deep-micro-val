@@ -65,7 +65,8 @@ def _pred_impl(model, in_path, padding, tiling):
         pred = predict_with_tiling(model, image, tiling)
     else:
         pred = predict(model, image)
-    return pred
+    assert pred.shape[0] == 1, f"Have more than one batch {pred.shape}"
+    return pred[0]
 
 
 def predict_affinities(model, in_path, out_path,

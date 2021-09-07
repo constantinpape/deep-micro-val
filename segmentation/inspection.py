@@ -4,7 +4,7 @@ from tqdm import tqdm
 from .common import read_image
 
 
-def inspect(im_file, pred_file, show_segmentations, show_predictions):
+def inspect(im_file, pred_file, show_segmentations, show_predictions, include_seg_names=None):
     stop = False
 
     v = napari.Viewer()
@@ -20,7 +20,8 @@ def inspect(im_file, pred_file, show_segmentations, show_predictions):
             f["predictions"].visititems(visit_pred)
 
         def visit_seg(name, node):
-            v.add_labels(node[:], name=name)
+            if include_seg_names is None or name in include_seg_names:
+                v.add_labels(node[:], name=name)
 
         if show_segmentations:
             f["segmentations"].visititems(visit_seg)
@@ -36,9 +37,9 @@ def inspect(im_file, pred_file, show_segmentations, show_predictions):
 
 
 def inspect_all(image_files, prediction_files,
-                show_segmentations=True, show_predictions=False):
+                show_segmentations=True, show_predictions=False, include_seg_names=None):
     assert len(image_files) == len(prediction_files)
     for im_file, pred_file in tqdm(zip(image_files, prediction_files), total=len(image_files)):
-        stop = inspect(im_file, pred_file, show_segmentations, show_predictions)
+        stop = inspect(im_file, pred_file, show_segmentations, show_predictions, include_seg_names)
         if stop:
             break
