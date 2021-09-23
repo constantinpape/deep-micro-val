@@ -50,12 +50,14 @@ def main(folder, input_folder):
         offsets = get_offsets(affinity_model)
 
         tiling = {"halo": {"x": 16, "y": 16}, "tile": {"x": 512, "y": 512}}
+        reshap_cellpose = (512, 512)
         segment_all(input_files, output_folder,
                     affinity_model=affinity_model,
                     boundary_model=boundary_model,
                     stardist_model=stardist_model,
                     offsets=offsets,
-                    tiling=tiling)
+                    tiling=tiling,
+                    reshap_cellpose=reshap_cellpose)
 
     output_files = glob(os.path.join(output_folder, "*.h5"))
     output_files.sort()

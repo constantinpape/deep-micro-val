@@ -19,13 +19,15 @@ except ImportError:
 def _segment_image(in_path, out_path,
                    affinity_model, boundary_model,
                    cellpose_model, stardist_model,
-                   offsets, with_foreground, padding, tiling):
+                   offsets, with_foreground, padding, tiling,
+                   reshap_cellpose):
     if affinity_model or boundary_model:
         baselines.compute_all_baselines(in_path, out_path, affinity_model, boundary_model,
                                         offsets=offsets, with_foreground=with_foreground,
                                         padding=padding, tiling=tiling)
     if cellpose_model:
-        cellpose.compute_cellpose(cellpose_model, in_path, out_path)
+        cellpose.compute_cellpose(cellpose_model, in_path, out_path,
+                                  reshape=reshap_cellpose)
     if stardist_model:
         stardist.compute_stardist(stardist_model, in_path, out_path)
 
@@ -33,7 +35,8 @@ def _segment_image(in_path, out_path,
 # TODO cellpose model type as parameter
 def segment_all(files, output_folder,
                 affinity_model=None, boundary_model=None, stardist_model=None,
-                offsets=None, with_foreground=True, padding=None, tiling=None):
+                offsets=None, with_foreground=True, padding=None, tiling=None,
+                reshap_cellpose=None):
     os.makedirs(output_folder, exist_ok=True)
 
     affinity_model = None if (affinity_model is None or baselines is None) else baselines.load_model(affinity_model)
@@ -48,7 +51,7 @@ def segment_all(files, output_folder,
                        affinity_model, boundary_model,
                        cellpose_model, stardist_model,
                        offsets, with_foreground,
-                       padding, tiling)
+                       padding, tiling, reshap_cellpose)
 
 
 def require_nucleus_models(model_folder):
