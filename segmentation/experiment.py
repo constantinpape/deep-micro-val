@@ -3,6 +3,11 @@ from pathlib import Path
 from tqdm import tqdm
 
 try:
+    from bioimageio.core import export_resource_package
+except ImportError:
+    export_resource_package = None
+
+try:
     from . import baselines
 except ImportError:
     baselines = None
@@ -54,35 +59,6 @@ def segment_all(files, output_folder,
                        padding, tiling, reshap_cellpose)
 
 
-def require_nucleus_models(model_folder):
-    try:
-        from bioimageio.spec import export_resource_package
-    except ImportError:
-        export_resource_package = None
-
-    os.makedirs(model_folder, exist_ok=True)
-
-    # TODO proper modelzoo url
-    affinity_url = ""
-    affinity_model = Path(model_folder) / "DSB-Nuclei-AffinityModel.zip"
-    if not affinity_model.exists() and export_resource_package is not None:
-        export_resource_package(affinity_url, output_path=affinity_model)
-
-    # TODO proper modelzoo url
-    boundary_url = ""
-    boundary_model = Path(model_folder) / "DSB-Nuclei-BoundaryModel.zip"
-    if not boundary_model.exists() and export_resource_package is not None:
-        export_resource_package(boundary_url, output_path=boundary_model)
-
-    # TODO try the full stardist dsb model (issues with channels)
-    # TODO stardist model download
-    # stardist_url = "todo"
-    stardist_model = os.path.join(model_folder, "2D_dsb2018")
-    assert os.path.exists(stardist_model), stardist_model
-
-    return affinity_model, boundary_model, stardist_model
-
-
 def get_offsets(model_path):
     try:
         from bioimageio.spec import load_resource_description
@@ -90,3 +66,51 @@ def get_offsets(model_path):
         return None
     model = load_resource_description(model_path)
     return model.config["mws"]["offsets"]
+
+
+# model utilities
+
+
+def _require_bioimageio_model(model_path, doi):
+    if not model_path.exists() and export_resource_package is not None:
+        export_resource_package(doi, output_path=model_path)
+    return model_path
+
+
+def require_affinity_nucleus_model(affinity_model, dataset="dsb"):
+    dois = {
+        "dsb": "10.5072/zenodo.935424"
+    }
+    assert dataset in dois
+    return _require_bioimageio_model(affinity_model, dois[dataset])
+
+
+def require_boundary_nucleus_model(boundary_model, dataset="dsb"):
+    dois = {
+        "dsb": "10.5072/zenodo.934248"
+    }
+    assert dataset in dois
+    return _require_bioimageio_model(boundary_model, dois[dataset])
+
+
+def require_stardist_nucleus_model(model_folder, dataset):
+    assert dataset == "dsb"
+    # TODO try the full stardist dsb model (issues with channels)
+    # TODO stardist model download
+    # stardist_url = "todo"
+    stardist_model = os.path.join(model_folder, "2D_dsb2018")
+    assert os.path.exists(stardist_model), stardist_model
+    return stardist_model
+
+
+def require_nucleus_models(model_folder, dataset="dsb"):
+    os.makedirs(model_folder, exist_ok=True)
+
+    affinity_model = Path(model_folder) / "DSB-Nuclei-AffinityModel.zip"
+    affinity_model = require_affinity_nucleus_model(affinity_model, dataset)
+
+    boundary_model = Path(model_folder) / "DSB-Nuclei-BoundaryModel.zip"
+    boundary_model = require_boundary_nucleus_model(boundary_model, dataset)
+
+    stardist_model = require_stardist_nucleus_model(model_folder, dataset)
+    return affinity_model, boundary_model, stardist_model

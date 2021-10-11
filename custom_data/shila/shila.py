@@ -35,7 +35,7 @@ def prepare_dataset(input_folder, output_folder):
 
 
 def main(folder, input_folder):
-    sys.path.append("..")
+    sys.path.append("../..")
     prepare_dataset(input_folder, folder)
     assert os.path.exists(folder)
 

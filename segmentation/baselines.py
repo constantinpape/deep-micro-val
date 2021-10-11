@@ -3,9 +3,9 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from bioimageio.core import load_resource_description
 from bioimageio.core.prediction import load_image, predict, predict_with_padding, predict_with_tiling
 from bioimageio.core.prediction_pipeline import create_prediction_pipeline
-from bioimageio.spec import load_resource_description
 
 from elf.segmentation.utils import normalize_input
 from elf.segmentation.mutex_watershed import mutex_watershed as mws

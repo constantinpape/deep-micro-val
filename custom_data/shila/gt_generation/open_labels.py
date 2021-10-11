@@ -7,6 +7,7 @@ def open_labels(image_path, label_path):
     im = imageio.volread(image_path)
     labels = imageio.volread(label_path)
     assert im.shape == labels.shape
+
     v = napari.Viewer()
     v.add_image(im)
     v.add_labels(labels)
