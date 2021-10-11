@@ -6,6 +6,7 @@ import h5py
 import napari
 import numpy as np
 import pandas as pd
+import tifffile
 
 from scipy.ndimage.morphology import distance_transform_edt
 from skimage.segmentation import watershed
@@ -26,8 +27,8 @@ def get_seeds(im, points, radius=6):
     return seeds
 
 
-def get_foreground_and_boundaries(seeds, threshold=0.5):
-    with h5py.File("./data/nuc_probs.h5", "r") as f:
+def get_foreground_and_boundaries(pred_path, seeds, threshold=0.5, alpha=0.3):
+    with h5py.File(pred_path, "r") as f:
         data = f["exported_data"][:]
 
     foreground = data[..., 2] < threshold  # 2 is the bg channel
@@ -41,9 +42,7 @@ def get_foreground_and_boundaries(seeds, threshold=0.5):
     dists /= max_dist
     dists = np.clip(dists, 0, 1)
 
-    alpha = 0.3
     boundaries = alpha * boundaries + (1. - alpha) * dists
-
     return foreground, boundaries
 
 
@@ -79,10 +78,24 @@ def _to_pred(name):
     return name.replace(".ome.tif", ".ome_Probabilities Stage 2.h5")
 
 
-# TODO
+def write_ome_tiff(path, data):
+    with tifffile.TiffWriter(path) as tif:
+        tif.save(data)
+
+
 def export_segmentation(im_name, ann_name, seg):
     out_folder = "./data/segmentations"
     os.makedirs(out_folder, exist_ok=True)
+    im = imageio.volread(os.path.join("./data/raw", im_name))
+    full_seg = np.zeros(im.shape, dtype="int16")
+    cz = pd.read_csv(os.path.join("./data/annotations", ann_name)).values[0, 1:3].astype("int")
+    full_seg[cz[0], cz[1]] = seg
+    # v = napari.Viewer()
+    # v.add_image(im)
+    # v.add_labels(full_seg)
+    # napari.run()
+    seg_path = os.path.join(out_folder, im_name)
+    write_ome_tiff(seg_path, full_seg)
 
 
 def segment_all(save):
