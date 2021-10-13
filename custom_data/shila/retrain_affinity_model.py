@@ -3,6 +3,28 @@ import os
 import sys
 from glob import glob
 
+import imageio
+from torch_em.util import export_biomageio_model
+
+
+def to_modelzoo(version):
+    checkpoint = f"./checkpoints/nuclei_v{version}"
+    output = f"./checkpoints/nuclei_v{version}/bioimageio-model"
+    input_data = imageio.imread("./gt_generation/data/nuclei/MMStack_Pos0.ome.tif")[:256, :256]
+    postprocessing = "affinities_with_foreground_to_boundaries2d"
+    export_biomageio_model(
+        checkpoint, output,
+        input_data=input_data,
+        name="custom-nucleus-segmentation",
+        authors=[{"name": "Constantin Pape; @constantinpape"}],
+        tags=["nucleus-segmentation"],
+        license="CC-BY-4.0",
+        documentation="Doc that",
+        git_repo='https://github.com/constantinpape/torch-em.git',
+        model_postprocessing=postprocessing,
+        input_optional_parameters=False
+    )
+
 
 def retrain_for_nuclei(version, pretrained, batch_size, n_iterations):
     sys.path.append("../..")
@@ -23,11 +45,15 @@ def retrain_for_nuclei(version, pretrained, batch_size, n_iterations):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--version", type=int, required=True)
+    parser.add_argument("-c", "--convert", type=int, default=0)
     parser.add_argument("-p", "--pretrained", type=int, default=1)
     parser.add_argument("-b", "--batch_size", type=int, default=4)
     parser.add_argument("-n", "--n_iterations", type=int, default=10000)
     args = parser.parse_args()
-    retrain_for_nuclei(args.version, bool(args.pretrained), args.batch_size, args.n_iterations)
+    if bool(args.convert):
+        to_modelzoo(args.version)
+    else:
+        retrain_for_nuclei(args.version, bool(args.pretrained), args.batch_size, args.n_iterations)
 
 
 if __name__ == "__main__":
