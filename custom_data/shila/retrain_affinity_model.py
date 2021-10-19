@@ -30,7 +30,7 @@ def retrain_for_nuclei(version, pretrained, batch_size, n_iterations):
     sys.path.append("../..")
     from segmentation.training.default_models import get_nucleus_trainer
 
-    label_paths = glob("./gt_generation/data/ground_truth/v1/*.ome.tif")
+    label_paths = glob(f"./gt_generation/data/ground_truth/v{version}/*.ome.tif")
     fnames = [os.path.split(lp)[1] for lp in label_paths]
     raw_paths = [os.path.join("./gt_generation/data/nuclei", fname) for fname in fnames]
 
