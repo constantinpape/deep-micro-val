@@ -15,7 +15,7 @@ def _predict(pp, in_path, out_path):
         f.create_dataset("prediction", data=output, compression="gzip")
 
 
-def run_prediction(version):
+def run_prediction(version, device):
     input_folder = "./data/nuclei"
     output_folder = f"./data/nn_predictions/v{version}"
     os.makedirs(output_folder, exist_ok=True)
@@ -23,7 +23,8 @@ def run_prediction(version):
     model = bioimageio.core.load_resource_description(
         f"../checkpoints/nuclei_v{version}/bioimageio-model/custom-nucleus-segmentation.zip"
     )
-    pp = bioimageio.core.prediction_pipeline.create_prediction_pipeline(bioimageio_model=model)
+    devices = None if device is None else [device]
+    pp = bioimageio.core.prediction_pipeline.create_prediction_pipeline(bioimageio_model=model, devices=devices)
     for name in tqdm(names):
         in_path = os.path.join(input_folder, name)
         out_name = name.replace(".ome.tif", ".h5")
@@ -34,9 +35,10 @@ def run_prediction(version):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--version", required=True, type=int)
+    parser.add_argument("-d", "--device", default=None, type=str)
     args = parser.parse_args()
     version = args.version
-    run_prediction(version)
+    run_prediction(version, args.device)
 
 
 if __name__ == "__main__":
