@@ -7,11 +7,15 @@ import imageio
 from torch_em.util import export_biomageio_model
 
 
-def to_modelzoo(version):
-    checkpoint = f"./checkpoints/nuclei_v{version}"
-    output = f"./checkpoints/nuclei_v{version}/bioimageio-model"
+def to_modelzoo(version, to_boundaries):
     input_data = imageio.imread("./gt_generation/data/nuclei/MMStack_Pos0.ome.tif")[:256, :256]
-    postprocessing = "affinities_with_foreground_to_boundaries2d"
+    checkpoint = f"./checkpoints/nuclei_v{version}"
+    if to_boundaries:
+        postprocessing = "affinities_with_foreground_to_boundaries2d"
+        output = f"./checkpoints/nuclei_v{version}/bioimageio-model"
+    else:
+        postprocessing = None
+        output = f"./checkpoints/nuclei_v{version}/bioimageio-model-affinities"
     export_biomageio_model(
         checkpoint, output,
         input_data=input_data,
@@ -46,12 +50,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--version", type=int, required=True)
     parser.add_argument("-c", "--convert", type=int, default=0)
+    parser.add_argument("-t", "--to_boundaries", type=int, default=0)
     parser.add_argument("-p", "--pretrained", type=int, default=1)
     parser.add_argument("-b", "--batch_size", type=int, default=4)
     parser.add_argument("-n", "--n_iterations", type=int, default=10000)
     args = parser.parse_args()
     if bool(args.convert):
-        to_modelzoo(args.version)
+        to_modelzoo(args.version, args.to_boundaries)
     else:
         retrain_for_nuclei(args.version, bool(args.pretrained), args.batch_size, args.n_iterations)
 

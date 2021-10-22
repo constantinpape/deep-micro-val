@@ -36,12 +36,4 @@ def main(show_2d, names=None):
 
 
 if __name__ == "__main__":
-    wrong_annotations = [
-        "TimEmbryos-020420_points_Pos10.csv",
-        "TimEmbryos-020420_points_Pos11.csv",
-        "TimEmbryos-020420_points_Pos12.csv",
-        "TimEmbryos-020420_points_Pos13.csv",
-        "TimEmbryos-020420_points_Pos15.csv",
-        "TimEmbryos-020420_points_Pos14.csv",
-    ]
-    main(show_2d=True, names=wrong_annotations)
+    main(show_2d=True)
