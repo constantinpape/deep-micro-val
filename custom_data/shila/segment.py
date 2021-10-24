@@ -18,11 +18,11 @@ from tqdm import tqdm
 def predict_image(model, image):
     image = image[None, None]
     pred = predict(model, image)[0]
-    return pred[0], pred[1:]
+    return np.array(pred[0, 0]), np.array(pred[0, 1:])
 
 
 def _get_seeds(annotations, shape, radius=6):
-    coords = np.round(annotations).astype("int")
+    coords = np.round(annotations.values).astype("int")
     coords = tuple(coords[:, i] for i in range(coords.shape[1]))
 
     seeds = np.zeros(shape, dtype="uint32")
@@ -66,8 +66,11 @@ def segment_mws(fg, affs, threshold=0.5, strides=[3, 3], min_size=50):
                [-9, 0], [0, -9], [-27, 0], [0, -27]]
     mask = fg > threshold
     seg = mws(affs, offsets, strides, randomize_strides=True, mask=mask).astype("uint32")
+
     if min_size > 0:
-        seg = apply_size_filter(seg, affs[0], min_size)[0]
+        seg = apply_size_filter(seg, affs[0], min_size, exclude=[0])[0]
+        seg[~mask] = 0
+
     return seg
 
 
@@ -132,7 +135,7 @@ def main():
     for name in tqdm(names):
         annotation_path = os.path.join(annotation_folder, name)
         data_path = os.path.join(data_folder, _to_tif(name))
-        segment_image(model, data_path, annotation_path, model, seg_root, name)
+        segment_image(model, data_path, annotation_path, seg_root, name)
 
 
 if __name__ == "__main__":

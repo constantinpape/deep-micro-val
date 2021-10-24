@@ -50,13 +50,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--version", type=int, required=True)
     parser.add_argument("-c", "--convert", type=int, default=0)
-    parser.add_argument("-t", "--to_boundaries", type=int, default=0)
+    parser.add_argument("-t", "--to_boundaries", type=int, default=1)
     parser.add_argument("-p", "--pretrained", type=int, default=1)
     parser.add_argument("-b", "--batch_size", type=int, default=4)
     parser.add_argument("-n", "--n_iterations", type=int, default=10000)
     args = parser.parse_args()
     if bool(args.convert):
-        to_modelzoo(args.version, args.to_boundaries)
+        to_modelzoo(args.version, bool(args.to_boundaries))
     else:
         retrain_for_nuclei(args.version, bool(args.pretrained), args.batch_size, args.n_iterations)
 
