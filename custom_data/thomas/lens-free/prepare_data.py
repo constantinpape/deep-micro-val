@@ -9,7 +9,7 @@ from imageio import imread
 from PIL import Image
 
 
-def view_image(root):
+def prepare_image(root, out_folder=None):
     image_files = glob(os.path.join(root, "*.tif")) + glob(os.path.join(root, "*.png"))
     c0, c1, c2, mask = None, None, None, None
     for im_file in image_files:
@@ -44,22 +44,39 @@ def view_image(root):
         pred = f["exported_data"][:]
     pred = pred.transpose((1, 0, 2))
 
-    v = napari.Viewer()
-    v.add_image(c0)
-    v.add_image(c1)
-    v.add_image(c2)
-    v.add_image(mask)
-    v.add_image(pred)
-    v.add_points(coords)
-    napari.run()
+    if out_folder is None:
+        v = napari.Viewer()
+        v.add_image(c0)
+        v.add_image(c1)
+        v.add_image(c2)
+        v.add_image(mask)
+        v.add_image(pred)
+        v.add_points(coords)
+        napari.run()
+    else:
+        name = os.path.split(root)[1]
+        name = name.replace("Dag", "day")
+        name = name.replace(" ", "") + ".h5"
+        os.makedirs(out_folder, exist_ok=True)
+        out_path = os.path.join(out_folder, name)
+        print("Saving data to", out_path)
+        with h5py.File(out_path, "a") as f:
+            f.create_dataset("c0", data=c0, compression="gzip")
+            f.create_dataset("c1", data=c1, compression="gzip")
+            f.create_dataset("c2", data=c2, compression="gzip")
+            f.create_dataset("mask", data=mask, compression="gzip")
+            f.create_dataset("pred", data=pred, compression="gzip")
+            f.create_dataset("seeds", data=coords, compression="gzip")
 
 
 def main():
-    folder = "/g/kreshuk/Deckers/Constantine_LFI_Probabilities_CellCounts"
+    # folder = "/g/kreshuk/Deckers/Constantine_LFI_Probabilities_CellCounts"
+    folder = "/home/pape/Work/data/thomas/training_data/original"
+    out_folder = "/home/pape/Work/data/thomas/training_data/prepared"
     root_names = os.listdir(folder)
     for root_name in root_names:
         print("Inspecting", root_name)
-        view_image(os.path.join(folder, root_name))
+        prepare_image(os.path.join(folder, root_name), out_folder)
 
 
 if __name__ == "__main__":
