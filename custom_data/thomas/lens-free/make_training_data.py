@@ -31,12 +31,22 @@ def move_seeds(points, fg_mask, mask):
     print("Number of seeds in the background:", len(bg_seeds), "/", len(seed_ids))
 
     print("Moving background seeds into the foreground")
-    _, fg_indices = distance_transform_edt(~fg_mask, return_indices=True)
+    distances, fg_indices = distance_transform_edt(~fg_mask, return_indices=True)
     fg_y_indices = fg_indices[0][seed_indices]
     fg_x_indices = fg_indices[1][seed_indices]
     assert len(fg_y_indices) == len(fg_x_indices) == len(bg_seeds)
-    for seed_id, y, x in zip(bg_seeds, fg_y_indices, fg_x_indices):
+
+    # NOTE could also mask the dropped seeds later and, in addition, mask out predictions for 'mask'
+    # instead of just setting it to background
+    seeds_dropped = 0
+    distance_threshold = 12  # Thomas uses 7 as a distance but that sounds too low here
+    for seed_id, dist, y, x in zip(bg_seeds, dist, fg_y_indices, fg_x_indices):
+        if dist > distance_threshold:
+            continue
+            seeds_dropped += 1
         seeds[y, x] = seed_id
+    print(seeds_dropped, "background seeds were dropped because they exceeded a distance of",
+          distance_threshold, "to the foreground")
 
     # make sure all seeds are in the foreground now
     seed_ids, seed_coords = np.unique(seeds, return_index=True)
@@ -55,6 +65,8 @@ def move_seeds(points, fg_mask, mask):
 
 
 def make_segmentation(im, pred, mask, seeds, view=False):
+    # NOTE segments may be a bit too large with this threshold
+    # due to thick bounadry predictions covering background
     thresh = 0.5
 
     fg_probs = 1. - pred[..., 2]
