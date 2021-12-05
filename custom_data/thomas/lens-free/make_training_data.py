@@ -11,6 +11,10 @@ from skimage.segmentation import watershed
 
 # Tmove seeds that are not inside 'fg_mask' to closest fg_mask point, remove the seeds in 'mask'
 def move_seeds(points, fg_mask, mask):
+    # distance_threshold = 12  # Thomas uses 7 as a distance but that sounds too low here
+    distance_threshold = 0
+    radius = 3
+
     seeds = np.zeros(fg_mask.shape, dtype="uint32")
     coords = np.round(points).astype("int")
     coords = tuple(coords[:, i] for i in range(coords.shape[1]))
@@ -32,42 +36,48 @@ def move_seeds(points, fg_mask, mask):
 
     print("Moving background seeds into the foreground")
     distances, fg_indices = distance_transform_edt(~fg_mask, return_indices=True)
+    distances = distances[seed_indices]
     fg_y_indices = fg_indices[0][seed_indices]
     fg_x_indices = fg_indices[1][seed_indices]
     assert len(fg_y_indices) == len(fg_x_indices) == len(bg_seeds)
 
     # NOTE could also mask the dropped seeds later and, in addition, mask out predictions for 'mask'
     # instead of just setting it to background
-    seeds_dropped = 0
-    distance_threshold = 12  # Thomas uses 7 as a distance but that sounds too low here
-    for seed_id, dist, y, x in zip(bg_seeds, dist, fg_y_indices, fg_x_indices):
-        if dist > distance_threshold:
+    dropped_seeds = []
+    dropped_seed_map = np.zeros_like(seeds)
+
+    for seed_id, dist, y, x in zip(bg_seeds, distances, fg_y_indices, fg_x_indices):
+        if distance_threshold > 0 and dist > distance_threshold:
+            dropped_seeds.append(seed_id)
+            dropped_seed_map[y, x] = 1
             continue
-            seeds_dropped += 1
         seeds[y, x] = seed_id
-    print(seeds_dropped, "background seeds were dropped because they exceeded a distance of",
+    print(len(dropped_seeds), "background seeds were dropped because they exceeded a distance of",
           distance_threshold, "to the foreground")
+    n_seeds -= len(dropped_seeds)
+
+    if dropped_seeds:
+        dropped_seed_map = binary_dilation(dropped_seed_map, iterations=radius).astype("uint32")
 
     # make sure all seeds are in the foreground now
     seed_ids, seed_coords = np.unique(seeds, return_index=True)
     seed_ids, seed_coords = seed_ids[1:], seed_coords[1:]
-    assert len(seed_ids) == n_seeds
+    assert len(seed_ids) == n_seeds, f"{len(seed_ids)}, {n_seeds}"
     seed_indices = np.unravel_index(seed_coords, seeds.shape)
     values_at_seeds = fg_mask[seed_indices]
     assert all(values_at_seeds)
 
     # enlarge the seeds
-    radius = 3
     seed_mask = binary_dilation(seeds, iterations=radius)
     seeds = watershed(seed_mask.astype("float32"), seeds, mask=seed_mask)
 
-    return seeds
+    return seeds, dropped_seed_map
 
 
 def make_segmentation(im, pred, mask, seeds, view=False):
     # NOTE segments may be a bit too large with this threshold
     # due to thick bounadry predictions covering background
-    thresh = 0.5
+    thresh = 0.6
 
     fg_probs = 1. - pred[..., 2]
     boundaries = pred[..., 1]
@@ -77,7 +87,7 @@ def make_segmentation(im, pred, mask, seeds, view=False):
     fg_mask = fg_probs > thresh
     fg_mask[mask] = 0
 
-    seeds = move_seeds(seeds, fg_mask, mask)
+    seeds, dropped_seeds = move_seeds(seeds, fg_mask, mask)
     seg = watershed(boundaries, seeds, mask=fg_mask)
 
     if view:
@@ -87,13 +97,14 @@ def make_segmentation(im, pred, mask, seeds, view=False):
         v.add_image(fg_mask, visible=False)
         v.add_image(boundaries, visible=False)
         v.add_labels(seeds)
+        v.add_labels(dropped_seeds)
         v.add_labels(seg)
         napari.run()
 
     return seg
 
 
-def make_training_data(in_path, out_path):
+def make_training_data(in_path, out_path, view):
     with h5py.File(in_path, "r") as f, h5py.File(out_path, "w") as f_out:
         c0, c1, c2 = f["c0"][:], f["c1"][:], f["c2"][:]
         f_out.create_dataset("channels/c0", data=c0, compression="gzip")
@@ -107,18 +118,20 @@ def make_training_data(in_path, out_path):
         seeds = f["seeds"][:]
         mask = f["mask"][:].astype("bool")
 
-        seg = make_segmentation(c1, pred, mask, seeds, view=True)
+        seg = make_segmentation(c1, pred, mask, seeds, view=view)
         f_out.create_dataset("labels", data=seg, compression="gzip")
 
 
 def main():
-    input_folder = "/home/pape/Work/data/thomas/training_data/prepared"
-    output_folder = "/home/pape/Work/data/thomas/training_data/data"
+    view = False
+    input_folder = "/home/pape/Work/data/thomas/training_data/v2/prepared"
+    output_folder = "/home/pape/Work/data/thomas/training_data/v2/data"
     os.makedirs(output_folder, exist_ok=True)
     input_files = glob(os.path.join(input_folder, "*.h5"))
     for inp in input_files:
+        print("Make training data for", inp)
         outp = os.path.join(output_folder, os.path.split(inp)[1])
-        make_training_data(inp, outp)
+        make_training_data(inp, outp, view=view)
 
 
 if __name__ == "__main__":
