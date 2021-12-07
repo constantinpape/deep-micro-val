@@ -1,6 +1,6 @@
 import h5py
 from torch_em.util import (add_weight_formats,
-                           export_biomageio_model,
+                           export_bioimageio_model,
                            get_default_citations,
                            export_parser_helper)
 
@@ -74,7 +74,7 @@ def export_to_bioimageio(checkpoint, output, input_, affs_to_bd, additional_form
     if additional_formats is None:
         additional_formats = []
 
-    export_biomageio_model(
+    export_bioimageio_model(
         checkpoint, output,
         input_data=input_data,
         name=name,
