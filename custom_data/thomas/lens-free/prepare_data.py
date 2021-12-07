@@ -57,6 +57,7 @@ def prepare_image(root, out_folder=None):
         name = os.path.split(root)[1]
         name = name.replace("Dag", "day")
         name = name.replace(" ", "") + ".h5"
+        name = name.replace("SecondSet", "second_set")
         os.makedirs(out_folder, exist_ok=True)
         out_path = os.path.join(out_folder, name)
         print("Saving data to", out_path)
@@ -71,8 +72,8 @@ def prepare_image(root, out_folder=None):
 
 def main():
     # folder = "/g/kreshuk/Deckers/Constantine_LFI_Probabilities_CellCounts"
-    folder = "/home/pape/Work/data/thomas/training_data/original"
-    out_folder = "/home/pape/Work/data/thomas/training_data/prepared"
+    folder = "/home/pape/Work/data/thomas/training_data/v2/original"
+    out_folder = "/home/pape/Work/data/thomas/training_data/v2/prepared"
     root_names = os.listdir(folder)
     for root_name in root_names:
         print("Inspecting", root_name)
