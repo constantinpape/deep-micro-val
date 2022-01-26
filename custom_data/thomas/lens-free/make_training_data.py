@@ -4,7 +4,7 @@ from glob import glob
 import h5py
 import numpy as np
 from scipy.ndimage.morphology import distance_transform_edt
-from scipy.ndimage.morphology import binary_dilation
+from scipy.ndimage.morphology import binary_dilation, binary_closing
 from skimage.measure import label
 from skimage.segmentation import watershed
 
@@ -12,7 +12,7 @@ from skimage.segmentation import watershed
 # Tmove seeds that are not inside 'fg_mask' to closest fg_mask point, remove the seeds in 'mask'
 def move_seeds(points, fg_mask, mask):
     # distance_threshold = 12  # Thomas uses 7 as a distance but that sounds too low here
-    distance_threshold = 0
+    distance_threshold = 8
     radius = 3
 
     seeds = np.zeros(fg_mask.shape, dtype="uint32")
@@ -75,16 +75,18 @@ def move_seeds(points, fg_mask, mask):
 
 
 def make_segmentation(im, pred, mask, seeds, view=False):
-    # NOTE segments may be a bit too large with this threshold
-    # due to thick bounadry predictions covering background
-    thresh = 0.6
+    # NOTE the segmentation is stil a bit thick with this threshold; to further improve it we could try to shrink more
+    # and then grow back to some gradient image
+    thresh = 0.3
 
     fg_probs = 1. - pred[..., 2]
     boundaries = pred[..., 1]
+    fg_probs -= boundaries
 
     assert fg_probs.shape == boundaries.shape == mask.shape
 
     fg_mask = fg_probs > thresh
+    fg_mask = binary_closing(fg_mask, iterations=2)
     fg_mask[mask] = 0
 
     seeds, dropped_seeds = move_seeds(seeds, fg_mask, mask)
@@ -124,8 +126,8 @@ def make_training_data(in_path, out_path, view):
 
 def main():
     view = False
-    input_folder = "/home/pape/Work/data/thomas/training_data/v2/prepared"
-    output_folder = "/home/pape/Work/data/thomas/training_data/v2/data"
+    input_folder = "/home/pape/Work/data/deckers/lens-free/training_data/v2/prepared"
+    output_folder = "/home/pape/Work/data/deckers/lens-free/training_data/v3/data"
     os.makedirs(output_folder, exist_ok=True)
     input_files = glob(os.path.join(input_folder, "*.h5"))
     for inp in input_files:
