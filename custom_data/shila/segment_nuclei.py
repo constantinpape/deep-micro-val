@@ -1,5 +1,6 @@
 import argparse
 import os
+from glob import glob
 
 import bioimageio.core
 import imageio
@@ -7,7 +8,7 @@ import numpy as np
 import pandas as pd
 import tifffile
 
-from bioimageio.core.prediction import predict
+from bioimageio.core.prediction import predict_with_tiling
 from elf.segmentation.mutex_watershed import mutex_watershed as mws
 from elf.segmentation.watershed import apply_size_filter
 from scipy.ndimage.morphology import distance_transform_edt
@@ -16,8 +17,10 @@ from tqdm import tqdm
 
 
 def predict_image(model, image):
+    assert image.ndim == 2, f"{image.shape}"
     image = image[None, None]
-    pred = predict(model, image)[0]
+    tiling = {"tile": {"x": 1024, "y": 1024}, "halo": {"x": 128, "y": 128}}
+    pred = predict_with_tiling(model, image, tiling=tiling)[0]
     return np.array(pred[0, 0]), np.array(pred[0, 1:])
 
 
@@ -74,44 +77,95 @@ def segment_mws(fg, affs, threshold=0.5, strides=[3, 3], min_size=50):
     return seg
 
 
-def _write_res(path, seg, full_shape, cz):
-    full_seg = np.zeros(full_shape, dtype="int16")
-    full_seg[int(cz[0]), int(cz[1])] = seg
-    with tifffile.TiffWriter(path) as tif:
-        tif.save(full_seg)
+def _write_res(path, seg, full_shape, z):
+    if z is None:
+        assert seg.shape == full_shape
+        with tifffile.TiffWriter(path) as tif:
+            tif.save(seg)
+    else:
+        full_seg = np.zeros(full_shape, dtype="int16")
+        full_seg[z] = seg
+        with tifffile.TiffWriter(path) as tif:
+            tif.save(full_seg)
 
 
-def segment_image(model, data_path, annotation_path, seg_root, name):
-    image = imageio.volread(data_path)
-    full_shape = image.shape
-    annotations = pd.read_csv(annotation_path).iloc[:, 1:]
+def _load_annotations(annotation_path, image):
+    z = None
+    if isinstance(annotation_path, str):
+        assert os.path.exists(annotation_path)
+        annotations = pd.read_csv(annotation_path).iloc[:, 1:]
+        z, c = annotations.iloc[0, :2]
+        z, c = int(z), int(c)
+        annotations = annotations.iloc[:, 2:]
+        image = image[z, c]
+    else:
+        all_annotations = []
+        for zz, annotation_file in enumerate(annotation_path):
+            annotations = pd.read_csv(annotation_file)
+            annotations = annotations.drop(columns=["index", "axis-1"])
+            annotations.iloc[:, 0] = zz
+            all_annotations.append(annotations)
+        assert len(all_annotations) == image.shape[0]
+        annotations = pd.concat(all_annotations)
+        image = image[:, -1]
+    return image, annotations, z
 
-    cz = annotations.iloc[0, :2]
-    annotations = annotations.iloc[:, 2:]
-    image = image[int(cz[0]), int(cz[1])]
 
+def segment_single_image(model, image, annotations, use_mws):
     fg, affs = predict_image(model, image)
     seg_ws = segment_seeded_watershed(fg, affs, annotations)
-    seg_mws = segment_mws(fg, affs)
-
-    path_ws = os.path.join(seg_root, "watershed", name.replace(".csv", ".ome.tif"))
-    _write_res(path_ws, seg_ws, full_shape, cz)
-    path_mws = os.path.join(seg_root, "mutex_watershed", name.replace(".csv", ".ome.tif"))
-    _write_res(path_mws, seg_mws, full_shape, cz)
+    seg_mws = segment_mws(fg, affs) if use_mws else None
+    return seg_ws, seg_mws
 
 
-def _to_tif(name):
-    pos = name[name.find("Pos"):].rstrip(".csv")
-    return f"MMStack_{pos}.ome.tif"
+def segment_image_stack(model, image, annotations, use_mws):
+    seg_ws = np.zeros_like(image, dtype="uint16")
+    seg_mws = np.zeros_like(image, dtype="uint16") if use_mws else None
+    for z in range(image.shape[0]):
+        zann = annotations[annotations["axis-0"] == z].drop(columns=["axis-0"])
+        wsz, mwsz = segment_single_image(model, image[z], zann, use_mws)
+        seg_ws[z] = wsz
+        if use_mws:
+            seg_mws[z] = mwsz
+    return seg_ws, seg_mws
+
+
+def segment_image(model, data_path, annotation_path, seg_root, name, use_mws=False):
+    image = imageio.volread(data_path)
+    full_shape = image[:, -1].shape
+    image, annotations, z = _load_annotations(annotation_path, image)
+
+    if z is None:
+        seg_ws, seg_mws = segment_image_stack(model, image, annotations, use_mws)
+    else:
+        seg_ws, seg_mws = segment_single_image(model, image, annotations, use_mws)
+
+    path_ws = os.path.join(seg_root, "watershed", name)
+    _write_res(path_ws, seg_ws, full_shape, z)
+    if use_mws:
+        path_mws = os.path.join(seg_root, "mutex_watershed", name)
+        _write_res(path_mws, seg_mws, full_shape, z)
 
 
 def _load_model(version, device):
-    ckpt = "./checkpoints/nuclei_v3/bioimageio-model-affinities/custom-nucleus-segmentation.zip"
+    ckpt = f"./checkpoints/nuclei_v{version}/bioimageio-model-affinities/custom-nucleus-segmentation.zip"
     assert os.path.exists(ckpt), ckpt
     resource = bioimageio.core.load_resource_description(ckpt)
     devices = None if device is None else [device]
     model = bioimageio.core.prediction_pipeline.create_prediction_pipeline(bioimageio_model=resource, devices=devices)
     return model
+
+
+def _get_annotation_path(annotation_folder, root, cycle, name):
+    pos = name[name.find("Pos"):].rstrip(".ome.tif")
+    csv_name = f"{root}_points_{pos}.csv"
+    if os.path.exists(os.path.join(annotation_folder, csv_name)):
+        return os.path.join(annotation_folder, csv_name)
+    else:
+        prefix = os.path.join(annotation_folder, f"{root}_points_{cycle.replace('_', '')}_{pos}_z*.csv")
+        files = glob(prefix)
+        files.sort()
+        return files
 
 
 def main():
@@ -121,22 +175,26 @@ def main():
     parser.add_argument("-d", "--device", default=None, type=str)
     args = parser.parse_args()
 
-    data_folder = "/g/kreshuk/data/marioni/shila/TimEmbryos-020420/HybCycle_29"
-    annotation_folder = "./point_annotations"
-    names = os.listdir(annotation_folder)
+    root, cycle = args.input.split("/")[-2:]
+    annotation_folder = f"./point_annotations/{root}/{cycle}"
+    assert os.path.exists(annotation_folder), annotation_folder
+    names = os.listdir(args.input)
     names.sort()
 
-    seg_root = "/g/kreshuk/data/marioni/shila/segmentation"
+    seg_root = f"/g/kreshuk/data/marioni/shila/nucleus_segmentation/{root}/{cycle}"
     os.makedirs(seg_root, exist_ok=True)
     os.makedirs(os.path.join(seg_root, "watershed"), exist_ok=True)
-    os.makedirs(os.path.join(seg_root, "mutex_watershed"), exist_ok=True)
+    # os.makedirs(os.path.join(seg_root, "mutex_watershed"), exist_ok=True)
 
     model = _load_model(args.version, args.device)
 
     for name in tqdm(names):
-        annotation_path = os.path.join(annotation_folder, name)
-        data_path = os.path.join(data_folder, _to_tif(name))
-        segment_image(model, data_path, annotation_path, seg_root, name)
+        data_path = os.path.join(args.input, name)
+        annotation_path = _get_annotation_path(annotation_folder, root, cycle, name)
+        if not annotation_path:
+            print("Could not find annotations for", data_path)
+            continue
+        segment_image(model, data_path, annotation_path, seg_root, name, use_mws=False)
 
 
 if __name__ == "__main__":
