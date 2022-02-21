@@ -4,7 +4,7 @@ import sys
 from glob import glob
 
 import imageio
-from torch_em.util import export_biomageio_model
+from torch_em.util import export_bioimageio_model
 
 
 def to_modelzoo(version, to_boundaries):
@@ -16,7 +16,7 @@ def to_modelzoo(version, to_boundaries):
     else:
         postprocessing = None
         output = f"./checkpoints/nuclei_v{version}/bioimageio-model-affinities"
-    export_biomageio_model(
+    export_bioimageio_model(
         checkpoint, output,
         input_data=input_data,
         name="custom-nucleus-segmentation",

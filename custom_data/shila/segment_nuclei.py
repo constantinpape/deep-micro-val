@@ -116,6 +116,7 @@ def _load_model(version, device):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input", required=True)
     parser.add_argument("-v", "--version", required=True, type=int)
     parser.add_argument("-d", "--device", default=None, type=str)
     args = parser.parse_args()

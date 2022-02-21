@@ -22,9 +22,9 @@ def get_unet(pretrained_model, offsets, **model_kwargs):
         model = UNet2d(**model_description.kwargs)
         weight_path = os.path.join(
             model_description.root_path,
-            model_description.weights["pytorch_state_dict"].source.path
+            model_description.weights["pytorch_state_dict"].source
         )
-        model.load_state_dict(torch.load(weight_path))
+        model.load_state_dict(torch.load(str(weight_path)))
         offsets = model_description.config["mws"]["offsets"]
     return model, offsets
 

@@ -14,7 +14,7 @@ def main():
     data_folder = "/g/kreshuk/data/marioni/shila/TimEmbryos-020420/HybCycle_29"
     segs_mws = "/g/kreshuk/data/marioni/shila/segmentation/mutex_watershed"
     segs_ws = "/g/kreshuk/data/marioni/shila/segmentation/watershed"
-    annotation_folder = "./point_annotations"
+    annotation_folder = "./point_annotations/TimEmbryos-020420/HybCycle_29"
 
     names = os.listdir(annotation_folder)
     names.sort()
