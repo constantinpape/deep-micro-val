@@ -63,6 +63,8 @@ def segment_image(input_path, seed_path, ilp, model):
     # segment cells
     cell_seg = np.zeros_like(seeds, dtype="uint16")
     for z in range(cell_seg.shape[0]):
+        if (seeds[z] != 0).sum() == 0:
+            continue
         cell_seg[z] = watershed(boundaries[z], markers=seeds[z], mask=fg_mask[z])
 
     v = napari.Viewer()
