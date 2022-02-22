@@ -6,6 +6,7 @@ import imageio
 import napari
 import numpy as np
 import torch
+from scipy.ndimage.morphology import distance_transform_edt
 from skimage.segmentation import watershed
 from torch_em.util import get_trainer
 from tqdm import tqdm
@@ -51,7 +52,8 @@ def segment_image(input_path, seed_path, ilp, model):
     fg_seed = (seeds > 0).astype("uint8")
     bg_seed = np.ones(fg_seed.shape, dtype="bool")
     bg_seed[:, 5:-5, 5:-5] = 0
-    bg_seed[fg_seed == 1] = 0
+    bg_seed_exclusion = distance_transform_edt(fg_seed == 0) <= 5
+    bg_seed[bg_seed_exclusion] = 0
     fg_seed[bg_seed] = 2
     fg_mask = np.zeros_like(seeds, dtype="bool")
     for z in range(fg_mask.shape[0]):
