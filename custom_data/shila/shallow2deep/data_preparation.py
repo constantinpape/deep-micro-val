@@ -33,9 +33,10 @@ def load_seg(seg_files):
     return seg
 
 
-def view(image_path, seg_files):
+def view(image_path, cell_files, nuc_files):
     image = imageio.volread(image_path)
-    seg = load_seg(seg_files)
+    cell = load_seg(cell_files)
+    nuc = load_seg(nuc_files)
     name = os.path.basename(image_path)
     # the usual data screw-up
     if name != "MMStack_Pos0.ome.tif":
@@ -43,14 +44,16 @@ def view(image_path, seg_files):
         image = fix_data(image)
     v = napari.Viewer()
     v.add_image(image)
-    v.add_labels(seg[:, None], scale=(1, 1, 4, 4))
+    v.add_labels(cell[:, None], scale=(1, 1, 4, 4))
+    v.add_labels(nuc[:, None], scale=(1, 1, 4, 4))
     v.title = name
     napari.run()
 
 
-def save(image_path, image_out, seg_files, seg_out):
+def save(image_path, image_out, cell_files, cell_out, nuc_files, nuc_out):
     image = imageio.volread(image_path)
-    seg = load_seg(seg_files)
+    cell = load_seg(cell_files)
+    nuc = load_seg(nuc_files)
     name = os.path.basename(image_path)
     # the usual data screw-up
     if name != "MMStack_Pos0.ome.tif":
@@ -58,8 +61,10 @@ def save(image_path, image_out, seg_files, seg_out):
         image = fix_data(image)
     with TiffWriter(image_out) as tif:
         tif.save(image)
-    with TiffWriter(seg_out) as tif:
-        tif.save(seg)
+    with TiffWriter(cell_out) as tif:
+        tif.save(cell)
+    with TiffWriter(nuc_out) as tif:
+        tif.save(nuc)
 
 
 def main():
@@ -70,16 +75,19 @@ def main():
     parser.add_argument("-s", "--save", type=int, default=0)
     args = parser.parse_args()
     embryo = args.embryo
-    seg_prefix = args.seg_prefix
     assert embryo in ("embryo1_embryo2", "embryo3")
-    assert seg_prefix in ("boundaryseg", "dapi")
-    seg_type = "nuclei" if seg_prefix == "dapi" else "cell"
 
     data_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/{embryo}_raw"
     data_out_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/{embryo}"
-    seg_in_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation_raw/{embryo}"
-    seg_out_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation/{embryo}/{seg_type}"
-    os.makedirs(seg_out_folder, exist_ok=True)
+
+    cell_in_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation_raw/{embryo}"
+    cell_out_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation/{embryo}/cells"
+
+    nuc_in_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation_raw/{embryo}"
+    nuc_out_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation/{embryo}/nuclei"
+
+    os.makedirs(cell_out_folder, exist_ok=True)
+    os.makedirs(nuc_out_folder, exist_ok=True)
     os.makedirs(data_out_folder, exist_ok=True)
 
     images = glob(os.path.join(data_folder, "*.ome.tif"))
@@ -88,16 +96,25 @@ def main():
     for image in tqdm(images):
         name = os.path.basename(image)
         pos = name[name.find("Pos"):].rstrip(".ome.tif")
-        seg_pattern = os.path.join(seg_in_folder, f"{seg_prefix}_{pos}-*")
-        seg_files = glob(seg_pattern)
-        seg_files.sort()
-        assert len(seg_files) == 6
+
+        cell_pattern = os.path.join(cell_in_folder, f"boundaryseg_{pos}-*")
+        cell_files = glob(cell_pattern)
+        cell_files.sort()
+
+        nuc_pattern = os.path.join(nuc_in_folder, f"dapi_{pos}-*")
+        nuc_files = glob(nuc_pattern)
+        nuc_files.sort()
+
+        assert len(cell_files) == 6
+        if len(nuc_files) != 6:
+            print("Only", len(nuc_files), "nuclei slices for", name)
         if args.view:
-            view(image, seg_files)
+            view(image, cell_files, nuc_files)
         if args.save:
             image_out = os.path.join(data_out_folder, name)
-            seg_out = os.path.join(seg_out_folder, name)
-            save(image, image_out, seg_files, seg_out)
+            cell_out = os.path.join(cell_out_folder, name)
+            nuc_out = os.path.join(nuc_out_folder, name)
+            save(image, image_out, cell_files, cell_out, nuc_files, nuc_out)
 
 
 if __name__ == "__main__":
