@@ -70,7 +70,6 @@ def save(image_path, image_out, cell_files, cell_out, nuc_files, nuc_out):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("embryo")
-    parser.add_argument("-p", "--seg_prefix", default="boundaryseg")
     parser.add_argument("-v", "--view", type=int, default=0)
     parser.add_argument("-s", "--save", type=int, default=0)
     args = parser.parse_args()
