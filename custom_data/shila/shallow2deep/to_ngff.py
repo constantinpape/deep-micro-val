@@ -4,11 +4,32 @@ from glob import glob
 
 import imageio
 import ome_zarr
+import zarr
 from tqdm import tqdm
 
 
 def convert_image_data(in_path, out_path):
-    pass
+    vol = imageio.volread(in_path)
+    axes = tuple("zcyx")
+
+    scaler = ome_zarr.scale.Scaler()
+    mip = scaler.local_mean(vol)
+    # TODO check the MIP
+    loc = ome_zarr.io.parse_url(out_path, mode="w")
+    group = zarr.group(loc.store)
+
+    # TODO
+    trafos = [
+        [{"type": "scale", "scale": [1.]}]
+    ]
+
+    chunks = (1, 1, 512, 512)
+    assert len(chunks) == len(axes)
+    storage_opts = {"compression": "gzip", "chunks": chunks}
+    ome_zarr.writer.write_multiscale(
+        mip, group, axes=axes,
+        coordinate_transformations=trafos, storage_options=storage_opts,
+    )
 
 
 # TODO
@@ -39,9 +60,14 @@ def main():
 
         cell_segmentation = os.path.join(cell_segmentation_folder, name)
         assert os.path.exists(cell_segmentation)
+        # TODO
+        # convert_label_data()
 
         nucleus_segmentation = os.path.join(nucleus_segmentation_folder, name)
         assert os.path.exists(nucleus_segmentation)
+        # TODO
+        # convert_label_data()
+        return
 
 
 # starting point:
