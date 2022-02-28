@@ -84,7 +84,7 @@ def main():
     args = parser.parse_args()
 
     # TODO export to modelzoo format
-    model = "/g/kreshuk/pape/Work/my_projects/torch-em/experiments/shallow2deep/cells/checkpoints/covid-if-cells"
+    model = "./shallow2deep/checkpoints/embryo-cell-boundaries"
 
     # ilp = from_project_file("./shila-boundaries.ilp")
     ilp = None
@@ -92,7 +92,7 @@ def main():
     names = os.listdir(args.nucleus_seg_folder)
     for name in tqdm(names):
         input_path = os.path.join(args.input, name)
-        assert os.path.exists(input_path)
+        assert os.path.exists(input_path), input_path
         seed_path = os.path.join(args.nucleus_seg_folder, name)
         segment_image(input_path, seed_path, ilp, model)
         break
