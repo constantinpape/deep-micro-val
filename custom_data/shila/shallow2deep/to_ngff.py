@@ -10,8 +10,40 @@ import zarr
 from tqdm import tqdm
 
 
-def convert_image_data(in_path, out_path):
+def write_as_ome_zarr(mip, group, resolution, units, axis_names):
 
+    # specify the scale metadata
+    # TODO get this programatically / from data passed to the scaler
+    is_scaled = {"c": False, "z": False, "y": True, "x": True}
+    trafos = [
+        [{
+            "scale": [resolution[ax] * 2**scale_level if is_scaled[ax] else resolution[ax] for ax in axis_names],
+            "type": "scale"
+        }]
+        for scale_level in range(len(mip))
+    ]
+
+    axes = []
+    for ax in axis_names:
+        axis = {"name": ax, "type": "channel" if ax == "c" else "space"}
+        unit = units.get(ax, None)
+        if unit is not None:
+            axis["unit"] = unit
+        axes.append(axis)
+
+    # provide additional storage options for zarr
+    chunks = (1, 1, 512, 512) if len(axes) == 4 else (1, 512, 512)
+    assert len(chunks) == len(axis_names)
+    storage_opts = {"chunks": chunks}
+
+    # write the data to ome.zarr
+    ome_zarr.writer.write_multiscale(
+        mip, group, axes=axes,
+        coordinate_transformations=trafos, storage_options=storage_opts,
+    )
+
+
+def convert_image_data(in_path, group, resolution, units):
     # load the input data from ome.tif
     vol = imageio.volread(in_path)
     # the data is stored as 'zcyx'. This is currently not allowed by ome.zarr, so we reorder to 'czyx'
@@ -24,51 +56,34 @@ def convert_image_data(in_path, out_path):
     scaler = ome_zarr.scale.Scaler()
     mip = scaler.local_mean(vol)
 
-    # specify the axis and scale metadata
-    axes_names = tuple("czyx")
-    # TODO get this programatically / from data passed to the scaler
-    is_scaled = {"c": False, "z": False, "y": True, "x": True}
-
-    # TODO get resolution info and units from shila
-    resolution = {"c": 1.0, "z": 1.0, "y": 1.0, "x": 1.0}
-    units = [None, "pixel", "pixel", "pixel"]
-    types = ["channel", "space", "space", "space"]
-
-    trafos = [
-        [{
-            "scale": [resolution[ax] * 2**scale_level if is_scaled[ax] else resolution[ax] for ax in axes_names],
-            "type": "scale"
-        }]
-        for scale_level in range(len(mip))
-    ]
-
-    axes = []
-    for ax, type_, unit in zip(axes_names, types, units):
-        axis = {"name": ax, "type": type_}
-        if unit is not None:
-            axis["unit"] = unit
-        axes.append(axis)
-
-    # provide additional storage options for zarr
-    chunks = (1, 1, 512, 512)
-    assert len(chunks) == len(axes_names)
-    storage_opts = {"chunks": chunks}
-
-    # write the data to ome.zarr
-    loc = ome_zarr.io.parse_url(out_path, mode="w")
-    group = zarr.group(loc.store)
-    ome_zarr.writer.write_multiscale(
-        mip, group, axes=axes,
-        coordinate_transformations=trafos, storage_options=storage_opts,
-    )
+    # specify the axis metadata
+    axis_names = tuple("czyx")
+    write_as_ome_zarr(mip, group, resolution, units, axis_names)
 
 
-# TODO
-def convert_label_data():
-    pass
+# TODO need some clarifications for the image-label format, see:
+# https://github.com/ome/ngff/issues/105
+def convert_label_data(in_path, group, resolution, units, label_name, colors=None):
+    # load the input data from ome.tif
+    vol = imageio.volread(in_path)
+
+    # create scale pyramid
+    # TODO how do we set options for the scaling?
+    # (in this case the defaults are fine,
+    # but it should be possible to over-ride this in general)
+    scaler = ome_zarr.scale.Scaler()
+    mip = scaler.nearest(vol)
+
+    # specify the axis metadata
+    axis_names = tuple("zyx")
+    write_as_ome_zarr(mip, group, resolution, units, axis_names)
+    group.attrs["labels"] = label_name
+    label_metadata = {}
+    if colors is not None:
+        label_metadata["colors"] = colors
+    group.attrs["image_label"] = label_metadata
 
 
-# TODO need more metadata, like the pixel size
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("embryo")
@@ -83,11 +98,21 @@ def main():
     cell_segmentation_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation/{embryo}/cells"
     nucleus_segmentation_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation/{embryo}/nuclei"
 
+    # TODO get resolution info and units from shila
+    resolution = {"c": 1.0, "z": 1.0, "y": 1.0, "x": 1.0}
+    # the labels are downsampled by a factor of 4 in xy
+    label_resolution = {"c": 1.0, "z": 1.0, "y": 4.0, "x": 4.0}
+    units = {"c": None, "z": "pixel", "y": "pixel", "x": "pixel"}
+
     for image in tqdm(images, desc=f"Convert images from {input_folder} to ngff"):
         name = os.path.basename(image)
         out_name = name.replace(".ome.tif", ".ome.zarr")
         out_path = os.path.join(output_folder, out_name)
-        convert_image_data(image, out_path)
+
+        loc = ome_zarr.io.parse_url(out_path, mode="w")
+        group = zarr.group(loc.store)
+
+        convert_image_data(image, group, resolution, units)
 
         cell_segmentation = os.path.join(cell_segmentation_folder, name)
         assert os.path.exists(cell_segmentation)
@@ -96,8 +121,10 @@ def main():
 
         nucleus_segmentation = os.path.join(nucleus_segmentation_folder, name)
         assert os.path.exists(nucleus_segmentation)
-        # TODO
-        # convert_label_data()
+        label_group = group.create_group("labels")
+        colors = [{"label-value": 1, "rgba": [0, 0, 255, 255]}]
+        convert_label_data(nucleus_segmentation, label_group, label_resolution, units,
+                           label_name="nuclei", colors=colors)
 
 
 # starting point:
