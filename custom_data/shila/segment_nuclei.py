@@ -27,6 +27,12 @@ def _get_seeds(annotations, shape, radius=6):
     coords = np.round(annotations.values).astype("int")
     coords = tuple(coords[:, i] for i in range(coords.shape[1]))
 
+    assert len(coords) == len(shape), f"{len(coords)}, {shape}"
+    if any(coord.max() >= sh for coord, sh in zip(coords, shape)):
+        print("Coords exceed shape:", [coord.max() for coord in coords], shape)
+        print("Clipping to shape")
+        coords = tuple(np.clip(coord, 0, sh - 1) for coord, sh in zip(coords, shape))
+
     seeds = np.zeros(shape, dtype="uint32")
     seed_ids = np.arange(1, len(annotations) + 1)
     seeds[coords] = seed_ids
