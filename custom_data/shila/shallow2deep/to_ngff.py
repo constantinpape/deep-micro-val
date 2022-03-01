@@ -78,7 +78,8 @@ def convert_label_data(in_path, group, resolution, units, label_name, colors=Non
     axis_names = tuple("zyx")
     write_as_ome_zarr(mip, group, resolution, units, axis_names)
     group.attrs["labels"] = label_name
-    label_metadata = {}
+    # TODO source! see idr example
+    label_metadata = {"source": {"image": "../.."}}
     if colors is not None:
         label_metadata["colors"] = colors
     group.attrs["image_label"] = label_metadata
@@ -104,6 +105,8 @@ def main():
     label_resolution = {"c": 1.0, "z": 1.0, "y": 4.0, "x": 4.0}
     units = {"c": None, "z": "pixel", "y": "pixel", "x": "pixel"}
 
+    # do we store each position as a single ome.zarr or do we merge accoriding to the grid info?
+    # discuss with shila!
     for image in tqdm(images, desc=f"Convert images from {input_folder} to ngff"):
         name = os.path.basename(image)
         out_name = name.replace(".ome.tif", ".ome.zarr")
@@ -115,19 +118,17 @@ def main():
         convert_image_data(image, group, resolution, units)
 
         cell_segmentation = os.path.join(cell_segmentation_folder, name)
+        label_group = group.create_group("labels/cells")
         assert os.path.exists(cell_segmentation)
-        # TODO
-        # convert_label_data()
+        convert_label_data(cell_segmentation, label_group, label_resolution, units, label_name="cells")
 
         nucleus_segmentation = os.path.join(nucleus_segmentation_folder, name)
         assert os.path.exists(nucleus_segmentation)
-        label_group = group.create_group("labels")
+        label_group = group.create_group("labels/nuclei")
         colors = [{"label-value": 1, "rgba": [0, 0, 255, 255]}]
         convert_label_data(nucleus_segmentation, label_group, label_resolution, units,
                            label_name="nuclei", colors=colors)
 
 
-# starting point:
-# https://gist.github.com/constantinpape/69e3cb8e0401621365d814b4d6fda0bc
 if __name__ == "__main__":
     main()
