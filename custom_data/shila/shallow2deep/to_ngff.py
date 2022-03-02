@@ -35,6 +35,7 @@ def write_as_ome_zarr(mip, group, resolution, units, axis_names):
     chunks = (1, 1, 512, 512) if len(axes) == 4 else (1, 512, 512)
     assert len(chunks) == len(axis_names)
     storage_opts = {"chunks": chunks}
+    assert mip[0].ndim == len(axes), f"{mip[0].shape}, {len(axes)}"
 
     # write the data to ome.zarr
     ome_zarr.writer.write_multiscale(
@@ -46,6 +47,7 @@ def write_as_ome_zarr(mip, group, resolution, units, axis_names):
 def convert_image_data(in_path, group, resolution, units):
     # load the input data from ome.tif
     vol = imageio.volread(in_path)
+
     # the data is stored as 'zcyx'. This is currently not allowed by ome.zarr, so we reorder to 'czyx'
     vol = vol.transpose((1, 0, 2, 3))
 
@@ -61,11 +63,13 @@ def convert_image_data(in_path, group, resolution, units):
     write_as_ome_zarr(mip, group, resolution, units, axis_names)
 
 
-# TODO need some clarifications for the image-label format, see:
-# https://github.com/ome/ngff/issues/105
 def convert_label_data(in_path, group, resolution, units, label_name, colors=None):
     # load the input data from ome.tif
     vol = imageio.volread(in_path)
+    if vol.ndim != 3:
+        print("Labels have unexpected shape", vol.shape, "for", in_path, label_name)
+        print("Adding these labels will be skipped")
+        return
 
     # create scale pyramid
     # TODO how do we set options for the scaling?
@@ -78,7 +82,6 @@ def convert_label_data(in_path, group, resolution, units, label_name, colors=Non
     axis_names = tuple("zyx")
     write_as_ome_zarr(mip, group, resolution, units, axis_names)
     group.attrs["labels"] = label_name
-    # TODO source! see idr example
     label_metadata = {"source": {"image": "../.."}}
     if colors is not None:
         label_metadata["colors"] = colors
@@ -90,8 +93,10 @@ def main():
     parser.add_argument("embryo")
     args = parser.parse_args()
     embryo = args.embryo
+    assert embryo in ("embryo1_embryo2", "embryo3"), embryo
 
     input_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/{embryo}"
+    assert os.path.exists(input_folder), input_folder
     output_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/ngff/{embryo}"
     os.makedirs(output_folder, exist_ok=True)
     images = glob(os.path.join(input_folder, "*.ome.tif"))
@@ -99,11 +104,15 @@ def main():
     cell_segmentation_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation/{embryo}/cells"
     nucleus_segmentation_folder = f"/g/kreshuk/data/marioni/shila/mouse-atlas-2020/segmentation/{embryo}/nuclei"
 
-    # TODO get resolution info and units from shila
-    resolution = {"c": 1.0, "z": 1.0, "y": 1.0, "x": 1.0}
+    # the xy-resolution is different for the two embryos
+    if embryo == "embryo3":
+        resolution = {"c": 1.0, "z": 4.0, "y": 0.17, "x": 0.17}
+    else:
+        resolution = {"c": 1.0, "z": 4.0, "y": 0.11, "x": 0.11}
+
     # the labels are downsampled by a factor of 4 in xy
-    label_resolution = {"c": 1.0, "z": 1.0, "y": 4.0, "x": 4.0}
-    units = {"c": None, "z": "pixel", "y": "pixel", "x": "pixel"}
+    label_resolution = {ax: res * 4 if ax in "xy" else res for ax, res in resolution.items()}
+    units = {"c": None, "z": "micrometer", "y": "micrometer", "x": "micrometer"}
 
     # do we store each position as a single ome.zarr or do we merge accoriding to the grid info?
     # discuss with shila!
