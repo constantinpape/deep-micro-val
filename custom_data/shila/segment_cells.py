@@ -1,53 +1,80 @@
 import argparse
 import os
+import subprocess
 
-import h5py
 import imageio
-import napari
+import h5py
 import numpy as np
-import torch
+import tifffile
 from scipy.ndimage.morphology import distance_transform_edt
 from skimage.segmentation import watershed
-from torch_em.util import get_trainer
 from tqdm import tqdm
+
 # from ilastik.experimental.api import from_project_file
 # from xarray import DataArray
 
 
-def segment_image(input_path, seed_path, ilp, model):
+def predict_enhancer(model, input_):
+    import torch
+    from torch_em.util import get_trainer
+
+    boundaries = np.zeros(input_.shape, dtype="float32")
+    model = get_trainer(model, device="cuda").model
+    model.eval()
+    with torch.no_grad():
+        for z in range(boundaries.shape[0]):
+            input_z = input_[z][None, None]
+            input_z = torch.from_numpy(input_z).to("cuda")
+            bd = model(input_z)
+            boundaries[z] = bd.detach().cpu().numpy().squeeze()
+    return boundaries
+
+
+def predict_with_ilastik(ilp, image):
+    tmp_input = "./ilastik-projects/tmp-raw.h5"
+    tmp_output = "./ilastik-projects/tmp-pred.h5"
+    with h5py.File(tmp_input, "w") as f:
+        f.create_dataset("raw", data=image, chunks=True)
+
+    if os.path.exists(tmp_output):
+        os.remove(tmp_output)
+
+    ilastik_folder = "/g/kreshuk/pape/Work/software/src/ilastik/ilastik-1.4.0b8-Linux"
+    ilastik_exe = os.path.join(ilastik_folder, "run_ilastik.sh")
+    assert os.path.exists(ilastik_exe), ilastik_exe
+    input_str = f"{tmp_input}/raw"
+    cmd = [ilastik_exe, "--headless",
+           "--project=%s" % ilp,
+           "--output_format=hdf5",
+           "--raw_data=%s" % input_str,
+           "--output_filename_format=%s" % tmp_output,
+           "--readonly=1"]
+    print("Run ilastik prediction ...")
+    subprocess.run(cmd)
+    with h5py.File(tmp_output, "r") as f:
+        pred = f["exported_data"][:]
+    return pred
+
+
+def segment_image(input_path, seed_path, ilp, model, out_path):
     image = imageio.volread(input_path)
 
-    print("Run prediction with ilastik ...")
+    # print("Run prediction with ilastik ...")
     # FIXME bug in ilastik, for now we use the hard-coded prediction
+    # ilp = from_project_file(ilp)
     # image = DataArray(image, dims=tuple("zcyx"))
     # pred = ilp.predict(image)
-    pred_path = "/g/kreshuk/data/marioni/shila/TimEmbryos-020420/data-data_Probabilities.h5"
-    with h5py.File(pred_path, "r") as f:
-        pred = f["exported_data"][:]
-    pred = (pred[:, 1] - pred[:, 0]).astype("float32")
-    print(pred.shape)
+    pred = predict_with_ilastik(ilp, image)
+    # note: Shila has labeled 1 as boundary and 0 as non-boundary
+    boundaries = (pred[:, 0] - pred[:, 1]).astype("float32")
 
     seeds = imageio.volread(seed_path)
+    assert boundaries.shape == seeds.shape, f"{boundaries.shape}, {seeds.shape}"
 
-    bd_tmp = "./bd_tmp.h5"
-    if os.path.exists(bd_tmp):
-        with h5py.File(bd_tmp, "r") as f:
-            boundaries = f["data"][:]
-    else:
-        print("Predict enhancer ...")
-        boundaries = np.zeros(seeds.shape, dtype="float32")
-        model = get_trainer(model, device="cuda").model
-        model.eval()
-        with torch.no_grad():
-            for z in range(boundaries.shape[0]):
-                input_ = pred[z][None, None]
-                input_ = torch.from_numpy(input_).to("cuda")
-                bd = model(input_)
-                boundaries[z] = bd.detach().cpu().numpy().squeeze()
-        with h5py.File(bd_tmp, "a") as f:
-            f.create_dataset("data", data=boundaries, compression="gzip")
+    if model is not None:
+        boundaries = predict_enhancer(model, boundaries)
 
-    print("Run foreground segmentation ...")
+    # print("Run foreground segmentation ...")
     # segment foreground / background
     fg_seed = (seeds > 0).astype("uint8")
     bg_seed = np.ones(fg_seed.shape, dtype="bool")
@@ -59,7 +86,7 @@ def segment_image(input_path, seed_path, ilp, model):
     for z in range(fg_mask.shape[0]):
         fg_mask[z] = (watershed(boundaries[z], markers=fg_seed[z]) == 1)
 
-    print("Run segmentation ...")
+    # print("Run segmentation ...")
     # segment cells
     cell_seg = np.zeros_like(seeds, dtype="uint16")
     for z in range(cell_seg.shape[0]):
@@ -67,6 +94,10 @@ def segment_image(input_path, seed_path, ilp, model):
             continue
         cell_seg[z] = watershed(boundaries[z], markers=seeds[z], mask=fg_mask[z])
 
+    with tifffile.TiffWriter(out_path) as tif:
+        tif.save(cell_seg)
+
+    import napari
     v = napari.Viewer()
     v.add_image(image[:, -1])
     v.add_image(pred)
@@ -77,25 +108,35 @@ def segment_image(input_path, seed_path, ilp, model):
     napari.run()
 
 
+# TODO check again if the enhancer improves predictions with Shila's new project
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", required=True)
-    parser.add_argument("-n", "--nucleus_seg_folder", required=True)
     args = parser.parse_args()
 
-    # TODO export to modelzoo format
-    model = "./shallow2deep/checkpoints/embryo-cell-boundaries"
+    # model = "./shallow2deep/checkpoints/embryo-cell-boundaries"
+    model = None
 
-    # ilp = from_project_file("./shila-boundaries.ilp")
-    ilp = None
+    # ilp = "./ilastik-projects/shila-boundaries.ilp"
+    ilp = "./ilastik-projects/early_ilastik.ilp"
 
-    names = os.listdir(args.nucleus_seg_folder)
+    input_folder = args.input
+    split = input_folder.find("shila") + len("shila")
+    nucleus_seg_folder = os.path.join(
+        input_folder[:split], "nucleus_segmentation", input_folder[split:].lstrip("/"), "watershed"
+    )
+    assert os.path.exists(nucleus_seg_folder), nucleus_seg_folder
+
+    out_folder = nucleus_seg_folder.replace("nucleus_segmentation", "cell_segmentation")
+    os.makedirs(out_folder, exist_ok=True)
+
+    names = os.listdir(nucleus_seg_folder)
     for name in tqdm(names):
-        input_path = os.path.join(args.input, name)
+        input_path = os.path.join(input_folder, name)
         assert os.path.exists(input_path), input_path
-        seed_path = os.path.join(args.nucleus_seg_folder, name)
-        segment_image(input_path, seed_path, ilp, model)
-        break
+        seed_path = os.path.join(nucleus_seg_folder, name)
+        out_path = os.path.join(out_folder, name)
+        segment_image(input_path, seed_path, ilp, model, out_path)
 
 
 if __name__ == "__main__":

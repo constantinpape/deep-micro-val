@@ -20,10 +20,15 @@ def main():
     annotation_folder = args.input
     assert os.path.exists(annotation_folder), annotation_folder
     timepoint, cycle = args.input.split("/")[-2:]
+
     data_folder = f"/g/kreshuk/data/marioni/shila/{timepoint}/{cycle}"
     assert os.path.exists(data_folder), data_folder
+
     seg_folder_nuclei = f"/g/kreshuk/data/marioni/shila/nucleus_segmentation/{timepoint}/{cycle}/watershed"
     assert os.path.exists(seg_folder_nuclei), seg_folder_nuclei
+
+    seg_folder_cells = f"/g/kreshuk/data/marioni/shila/cell_segmentation/{timepoint}/{cycle}/watershed"
+    have_cell_seg = os.path.exists(seg_folder_cells)
 
     names = os.listdir(annotation_folder)
     names.sort()
@@ -37,10 +42,18 @@ def main():
         nuclei = imageio.volread(nuc_path)
         assert image.shape == nuclei.shape
 
+        if have_cell_seg:
+            cell_path = _to_tif(seg_folder_cells, name)
+            assert os.path.exists(cell_path)
+            cells = imageio.volread(cell_path)
+            assert cells.shape == image.shape
+
         v = napari.Viewer()
         v.title = name
         v.add_image(image)
         v.add_labels(nuclei)
+        if have_cell_seg:
+            v.add_labels(cells)
         v.add_points(annotations)
         napari.run()
 
