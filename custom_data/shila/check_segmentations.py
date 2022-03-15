@@ -15,7 +15,9 @@ def _to_tif(data_folder, name):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", required=True)
+    parser.add_argument("-e", "--use_enhancer", type=int, default=0)
     args = parser.parse_args()
+    use_enhancer = bool(args.use_enhancer)
 
     annotation_folder = args.input
     assert os.path.exists(annotation_folder), annotation_folder
@@ -27,7 +29,8 @@ def main():
     seg_folder_nuclei = f"/g/kreshuk/data/marioni/shila/nucleus_segmentation/{timepoint}/{cycle}/watershed"
     assert os.path.exists(seg_folder_nuclei), seg_folder_nuclei
 
-    seg_folder_cells = f"/g/kreshuk/data/marioni/shila/cell_segmentation/{timepoint}/{cycle}/watershed"
+    seg_name = "enhancer" if use_enhancer else "vanilla"
+    seg_folder_cells = f"/g/kreshuk/data/marioni/shila/cell_segmentation/{timepoint}/{cycle}/{seg_name}"
     have_cell_seg = os.path.exists(seg_folder_cells)
 
     names = os.listdir(annotation_folder)

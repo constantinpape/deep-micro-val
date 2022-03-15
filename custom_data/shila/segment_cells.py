@@ -56,7 +56,7 @@ def predict_with_ilastik(ilp, image):
     return pred
 
 
-def segment_image(input_path, seed_path, ilp, model, out_path):
+def segment_image(input_path, seed_path, ilp, model, out_path, view):
     image = imageio.volread(input_path)
 
     # print("Run prediction with ilastik ...")
@@ -97,28 +97,30 @@ def segment_image(input_path, seed_path, ilp, model, out_path):
     with tifffile.TiffWriter(out_path) as tif:
         tif.save(cell_seg)
 
-    import napari
-    v = napari.Viewer()
-    v.add_image(image[:, -1])
-    v.add_image(pred)
-    v.add_image(boundaries)
-    v.add_labels(seeds)
-    v.add_labels(fg_mask.astype("uint8"))
-    v.add_labels(cell_seg)
-    napari.run()
+    if view:
+        import napari
+        v = napari.Viewer()
+        v.add_image(image[:, -1])
+        v.add_image(pred)
+        v.add_image(boundaries)
+        v.add_labels(seeds)
+        v.add_labels(fg_mask.astype("uint8"))
+        v.add_labels(cell_seg)
+        napari.run()
 
 
-# TODO check again if the enhancer improves predictions with Shila's new project
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", required=True)
+    parser.add_argument("-e", "--use_enhancer", type=int, default=0)
+    parser.add_argument("-v", "--view", type=int, default=0)
     args = parser.parse_args()
+    use_enhancer = bool(args.use_enhancer)
 
-    # model = "./shallow2deep/checkpoints/embryo-cell-boundaries"
-    model = None
+    ilp = "./ilastik-projects/shilaV2.ilp"
 
-    # ilp = "./ilastik-projects/shila-boundaries.ilp"
-    ilp = "./ilastik-projects/early_ilastik.ilp"
+    model = "./shallow2deep/checkpoints/embryo-cell-boundaries" if use_enhancer else None
+    seg_name = "enhancer" if use_enhancer else "vanilla"
 
     input_folder = args.input
     split = input_folder.find("shila") + len("shila")
@@ -128,6 +130,7 @@ def main():
     assert os.path.exists(nucleus_seg_folder), nucleus_seg_folder
 
     out_folder = nucleus_seg_folder.replace("nucleus_segmentation", "cell_segmentation")
+    out_folder = out_folder.replace("watershed", seg_name)
     os.makedirs(out_folder, exist_ok=True)
 
     names = os.listdir(nucleus_seg_folder)
@@ -136,7 +139,7 @@ def main():
         assert os.path.exists(input_path), input_path
         seed_path = os.path.join(nucleus_seg_folder, name)
         out_path = os.path.join(out_folder, name)
-        segment_image(input_path, seed_path, ilp, model, out_path)
+        segment_image(input_path, seed_path, ilp, model, out_path, bool(args.view))
 
 
 if __name__ == "__main__":
