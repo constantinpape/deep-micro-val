@@ -69,7 +69,7 @@ def convert_label_data(in_path, group, resolution, units, label_name, colors=Non
     if vol.ndim != 3:
         print("Labels have unexpected shape", vol.shape, "for", in_path, label_name)
         print("Adding these labels will be skipped")
-        return
+        return False
 
     # create scale pyramid
     # TODO how do we set options for the scaling?
@@ -86,6 +86,7 @@ def convert_label_data(in_path, group, resolution, units, label_name, colors=Non
     if colors is not None:
         label_metadata["colors"] = colors
     group.attrs["image_label"] = label_metadata
+    return True
 
 
 def main():
@@ -123,20 +124,28 @@ def main():
 
         loc = ome_zarr.io.parse_url(out_path, mode="w")
         group = zarr.group(loc.store)
-
         convert_image_data(image, group, resolution, units)
 
+        label_root = group.create_group("labels")
+        label_names = []
+
         cell_segmentation = os.path.join(cell_segmentation_folder, name)
-        label_group = group.create_group("labels/cells")
+        label_group = label_root.create_group("cells")
         assert os.path.exists(cell_segmentation)
-        convert_label_data(cell_segmentation, label_group, label_resolution, units, label_name="cells")
+        cells_added = convert_label_data(cell_segmentation, label_group, label_resolution, units, label_name="cells")
+        if cells_added:
+            label_names.append("cells")
 
         nucleus_segmentation = os.path.join(nucleus_segmentation_folder, name)
         assert os.path.exists(nucleus_segmentation)
-        label_group = group.create_group("labels/nuclei")
+        label_group = label_root.create_group("nuclei")
         colors = [{"label-value": 1, "rgba": [0, 0, 255, 255]}]
-        convert_label_data(nucleus_segmentation, label_group, label_resolution, units,
-                           label_name="nuclei", colors=colors)
+        nuclei_added = convert_label_data(nucleus_segmentation, label_group, label_resolution, units,
+                                          label_name="nuclei", colors=colors)
+        if nuclei_added:
+            label_names.append("nuclei")
+
+        label_root.attrs["labels"] = label_names
 
 
 if __name__ == "__main__":
