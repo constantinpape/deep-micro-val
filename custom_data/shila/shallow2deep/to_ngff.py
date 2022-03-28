@@ -10,10 +10,15 @@ import zarr
 from tqdm import tqdm
 
 
-def write_as_ome_zarr(mip, group, resolution, units, axis_names):
+def get_axes_and_trafos(mip, axis_names, units, resolution):
+    axes = []
+    for ax in axis_names:
+        axis = {"name": ax, "type": "channel" if ax == "c" else "space"}
+        unit = units.get(ax, None)
+        if unit is not None:
+            axis["unit"] = unit
+        axes.append(axis)
 
-    # specify the scale metadata
-    # TODO get this programatically / from data passed to the scaler
     is_scaled = {"c": False, "z": False, "y": True, "x": True}
     trafos = [
         [{
@@ -23,28 +28,17 @@ def write_as_ome_zarr(mip, group, resolution, units, axis_names):
         for scale_level in range(len(mip))
     ]
 
-    axes = []
-    for ax in axis_names:
-        axis = {"name": ax, "type": "channel" if ax == "c" else "space"}
-        unit = units.get(ax, None)
-        if unit is not None:
-            axis["unit"] = unit
-        axes.append(axis)
+    return axes, trafos
 
+
+def get_storage_opts(axis_names):
     # provide additional storage options for zarr
-    chunks = (1, 1, 512, 512) if len(axes) == 4 else (1, 512, 512)
+    chunks = (1, 1, 512, 512) if len(axis_names) == 4 else (1, 512, 512)
     assert len(chunks) == len(axis_names)
-    storage_opts = {"chunks": chunks}
-    assert mip[0].ndim == len(axes), f"{mip[0].shape}, {len(axes)}"
-
-    # write the data to ome.zarr
-    ome_zarr.writer.write_multiscale(
-        mip, group, axes=axes,
-        coordinate_transformations=trafos, storage_options=storage_opts,
-    )
+    return {"chunks": chunks}
 
 
-def convert_image_data(in_path, group, resolution, units):
+def convert_image_data(in_path, group, resolution, units, name):
     # load the input data from ome.tif
     vol = imageio.volread(in_path)
 
@@ -52,15 +46,19 @@ def convert_image_data(in_path, group, resolution, units):
     vol = vol.transpose((1, 0, 2, 3))
 
     # create scale pyramid
-    # TODO how do we set options for the scaling?
-    # (in this case the defaults are fine,
-    # but it should be possible to over-ride this in general)
     scaler = ome_zarr.scale.Scaler()
     mip = scaler.local_mean(vol)
 
     # specify the axis metadata
     axis_names = tuple("czyx")
-    write_as_ome_zarr(mip, group, resolution, units, axis_names)
+    axes, trafos = get_axes_and_trafos(mip, axis_names, units, resolution)
+    storage_opts = get_storage_opts(axis_names)
+
+    ome_zarr.writer.write_multiscale(
+        mip, group, name=name,
+        axes=axes, coordinate_transformations=trafos,
+        storage_options=storage_opts
+    )
 
 
 def convert_label_data(in_path, group, resolution, units, label_name, colors=None):
@@ -72,21 +70,19 @@ def convert_label_data(in_path, group, resolution, units, label_name, colors=Non
         return False
 
     # create scale pyramid
-    # TODO how do we set options for the scaling?
-    # (in this case the defaults are fine,
-    # but it should be possible to over-ride this in general)
     scaler = ome_zarr.scale.Scaler()
     mip = scaler.nearest(vol)
 
     # specify the axis metadata
     axis_names = tuple("zyx")
-    write_as_ome_zarr(mip, group, resolution, units, axis_names)
-    group.attrs["labels"] = label_name
-    label_metadata = {"source": {"image": "../.."}}
-    if colors is not None:
-        label_metadata["colors"] = colors
-    group.attrs["image_label"] = label_metadata
-    return True
+    axes, trafos = get_axes_and_trafos(mip, axis_names, units, resolution)
+    storage_opts = get_storage_opts(axis_names)
+
+    ome_zarr.writer.write_multiscale_labels(
+        mip, group, label_name,
+        axes=axes, coordinate_transformations=trafos,
+        storage_options=storage_opts, colors=colors
+    )
 
 
 def main():
@@ -124,28 +120,16 @@ def main():
 
         loc = ome_zarr.io.parse_url(out_path, mode="w")
         group = zarr.group(loc.store)
-        convert_image_data(image, group, resolution, units)
-
-        label_root = group.create_group("labels")
-        label_names = []
+        convert_image_data(image, group, resolution, units, name="image")
 
         cell_segmentation = os.path.join(cell_segmentation_folder, name)
-        label_group = label_root.create_group("cells")
         assert os.path.exists(cell_segmentation)
-        cells_added = convert_label_data(cell_segmentation, label_group, label_resolution, units, label_name="cells")
-        if cells_added:
-            label_names.append("cells")
+        convert_label_data(cell_segmentation, group, label_resolution, units, label_name="cells")
 
         nucleus_segmentation = os.path.join(nucleus_segmentation_folder, name)
         assert os.path.exists(nucleus_segmentation)
-        label_group = label_root.create_group("nuclei")
         colors = [{"label-value": 1, "rgba": [0, 0, 255, 255]}]
-        nuclei_added = convert_label_data(nucleus_segmentation, label_group, label_resolution, units,
-                                          label_name="nuclei", colors=colors)
-        if nuclei_added:
-            label_names.append("nuclei")
-
-        label_root.attrs["labels"] = label_names
+        convert_label_data(nucleus_segmentation, group, label_resolution, units, label_name="nuclei", colors=colors)
 
 
 if __name__ == "__main__":
