@@ -32,7 +32,7 @@ def predict(path, model, output_path, device, use_tiling):
     pp = create_prediction_pipeline(bioimageio_model=model, devices=[device])
 
     if use_tiling:
-        tiling = {"tile": {"x": 512, "y": 512}, "halo": {"x": 32, "y": 32}}
+        tiling = {"tile": {"x": 1024, "y": 1024}, "halo": {"x": 128, "y": 128}}
         pred = predict_with_tiling(pp, [input_], tiling=tiling)[0]
     else:
         padding = {"x": 16, "y": 16}

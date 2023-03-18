@@ -40,24 +40,28 @@ def main():
         annotations = pd.read_csv(annotation_path).drop(columns=["index", "axis-1"])
 
         tif_path = _to_tif(data_folder, name)
-        image = imageio.volread(tif_path)[:, -1]
+        image = imageio.volread(tif_path)
+        mem_image = image[:, 0]
+        nuc_image = image[:, -1]
+
         nuc_path = _to_tif(seg_folder_nuclei, name)
         nuclei = imageio.volread(nuc_path)
-        assert image.shape == nuclei.shape
+        assert nuc_image.shape == nuclei.shape
 
         if have_cell_seg:
             cell_path = _to_tif(seg_folder_cells, name)
             assert os.path.exists(cell_path)
             cells = imageio.volread(cell_path)
-            assert cells.shape == image.shape
+            assert cells.shape == nuc_image.shape
 
         v = napari.Viewer()
         v.title = name
-        v.add_image(image)
+        v.add_image(mem_image)
+        v.add_image(nuc_image)
         v.add_labels(nuclei)
         if have_cell_seg:
             v.add_labels(cells)
-        v.add_points(annotations)
+        v.add_points(annotations, size=30)
         napari.run()
 
 

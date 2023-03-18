@@ -17,7 +17,7 @@ def get_loader(version, split, patch_shape, batch_size):
     raw_key = "raw"
     label_key = "labels"
 
-    root = f"/g/kreshuk/pape/Work/data/deckers/lens-free/training_data/v{version}"
+    root = f"/g/kreshuk/pape/Work/data/deckers/lens-free/training_data/v{version}/data"
     paths = glob(os.path.join(root, "*.h5"))
 
     shapes = []

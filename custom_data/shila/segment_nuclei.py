@@ -65,6 +65,13 @@ def segment_seeded_watershed(fg_pred, affs, annotations, threshold=0.5):
     foreground = _get_foreground(fg_pred, seeds, threshold)
     hmap = _get_hmap(affs, foreground, seeds)
     assert hmap.shape == foreground.shape
+
+    # import napari
+    # v = napari.Viewer()
+    # v.add_image(foreground)
+    # v.add_image(hmap)
+    # napari.run()
+
     seg = watershed(hmap, seeds, mask=foreground)
     return seg
 
@@ -113,6 +120,7 @@ def segment_image(model, data_path, annotation_path, seg_root, name, use_mws=Fal
     annotations = pd.read_csv(annotation_path).drop(columns=["index", "axis-1"])
     seg_ws, seg_mws = segment_image_stack(model, image, annotations, use_mws)
     path_ws = _to_tif(os.path.join(seg_root, "watershed"), name)
+    # return
     _write_res(path_ws, seg_ws, image.shape)
     if use_mws:
         path_mws = _to_tif(os.path.join(seg_root, "mutex_watershed"), name)

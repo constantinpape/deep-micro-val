@@ -78,7 +78,7 @@ def export_to_bioimageio(checkpoint, output, input_, affs_to_bd, additional_form
         checkpoint, output,
         input_data=input_data,
         name=name,
-        authors=[{"name": "Constantin Pape; @constantinpape"}],
+        authors=[{"name": "Constantin Pape"}],
         tags=tags,
         license="CC-BY-4.0",
         documentation=doc,
